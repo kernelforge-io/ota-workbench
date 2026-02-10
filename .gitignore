@@ -1,0 +1,39 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright (c) 2025-2026 Kernel Forge LLC
+
+# Build artifacts
+/build/
+/CMakeFiles/
+/CMakeCache.txt
+/cmake_install.cmake
+/Makefile
+/compile_commands.json
+
+# Runtime output
+/server/
+imgui.ini
+
+# Generated artifacts inside vendored dependencies
+/external/**/CMakeFiles/
+/external/**/CMakeCache.txt
+/external/**/cmake_install.cmake
+/external/**/build.ninja
+/external/**/.ninja_deps
+/external/**/.ninja_log
+/external/**/_deps/
+/external/**/Testing/
+/external/**/build*/
+
+# IDE/editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*.bak
+*~
+*.code-workspace
+
+# OS files
+.DS_Store
+Thumbs.db
+reset-git-repo.sh

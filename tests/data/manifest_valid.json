@@ -1,0 +1,21 @@
+{
+  "manifest_version": "1.2.3",
+  "created": "2026-02-08T00:00:00Z",
+  "releases": [
+    {
+      "device_id": "default",
+      "release_name": "portfolio-release",
+      "release_version": "9.8.7",
+      "created": "2026-02-08T00:00:00Z",
+      "files": [
+        {
+          "file_type": "rauc_bundle",
+          "filename": "update.raucb",
+          "size": 12345,
+          "sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+          "path": "default/update.raucb"
+        }
+      ]
+    }
+  ]
+}
