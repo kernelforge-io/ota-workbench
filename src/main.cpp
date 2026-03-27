@@ -83,7 +83,15 @@ int main(int, char **) {
 	ImGui_ImplOpenGL3_Init(glsl_version);
 
 	ManifestState manifest{};
-	load_app_config(g_app_config);
+	if (!load_app_config(g_app_config)) {
+		std::fprintf(stderr, "Failed to initialize config.\n");
+		ImGui_ImplOpenGL3_Shutdown();
+		ImGui_ImplGlfw_Shutdown();
+		ImGui::DestroyContext();
+		glfwDestroyWindow(window);
+		glfwTerminate();
+		return 1;
+	}
 	reset_manifest(manifest, &g_app_config);
 
 	HttpServerState http_server{};
