@@ -33,6 +33,6 @@ struct AppConfig {
 
 std::filesystem::path get_config_directory();
 std::filesystem::path get_config_file_path();
-void load_app_config(AppConfig &cfg);
+bool load_app_config(AppConfig &cfg);
 bool save_app_config(const AppConfig &cfg);
 void persist_configuration(const ManifestState &st, AppConfig &cfg);

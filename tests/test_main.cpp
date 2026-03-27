@@ -1,11 +1,17 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025-2026 Kernel Forge LLC
 
+#include "app_config.h"
 #include "crypto.h"
 #include "manifest.h"
 
+#include <chrono>
 #include <cstddef>
+#include <cstdlib>
+#include <filesystem>
+#include <fstream>
 #include <iostream>
+#include <iterator>
 #include <string>
 #include <vector>
 
@@ -229,6 +235,199 @@ bool test_sha256_known_vector(std::string *err_out) {
 	return expect_string_eq(digest, expected,
 				"SHA-256('abc') known vector", err_out);
 }
+
+bool set_env_var(const char *name, const std::string &value) {
+#if defined(_WIN32)
+	return _putenv_s(name, value.c_str()) == 0;
+#else
+	return setenv(name, value.c_str(), 1) == 0;
+#endif
+}
+
+bool unset_env_var(const char *name) {
+#if defined(_WIN32)
+	return _putenv_s(name, "") == 0;
+#else
+	return unsetenv(name) == 0;
+#endif
+}
+
+class ScopedEnvVar {
+      public:
+	ScopedEnvVar(const char *name, const std::string &value) :
+	    name_(name) {
+		const char *existing = std::getenv(name_);
+		if (existing != nullptr) {
+			had_original_ = true;
+			original_ = existing;
+		}
+		set_env_var(name_, value);
+	}
+
+	~ScopedEnvVar() {
+		if (had_original_) {
+			set_env_var(name_, original_);
+		} else {
+			unset_env_var(name_);
+		}
+	}
+
+      private:
+	const char *name_;
+	bool had_original_ = false;
+	std::string original_;
+};
+
+std::filesystem::path make_temp_root(const std::string &label) {
+	namespace fs = std::filesystem;
+	const auto ticks =
+	    std::chrono::steady_clock::now().time_since_epoch().count();
+	return fs::temp_directory_path() /
+	       ("ota-workbench-test-" + label + "-" +
+		std::to_string(static_cast<long long>(ticks)));
+}
+
+bool test_missing_config_creates_file_and_continues(std::string *err_out) {
+	namespace fs = std::filesystem;
+
+	const fs::path temp_root = make_temp_root("missing");
+	ScopedEnvVar xdg_config_home("XDG_CONFIG_HOME", temp_root.string());
+	ScopedEnvVar home("HOME", "");
+
+	AppConfig cfg;
+	const fs::path config_path = get_config_file_path();
+	if (!expect_true(!fs::exists(config_path),
+			 "Config path unexpectedly exists before test.",
+			 err_out))
+		return false;
+
+	if (!expect_true(load_app_config(cfg),
+			 "load_app_config should succeed when creating default config.",
+			 err_out))
+		return false;
+
+	if (!expect_true(fs::exists(config_path),
+			 "Default config file was not created.", err_out))
+		return false;
+	if (!expect_true(cfg.package_output_dir == "server",
+			 "Expected parser to preserve default package_dir.",
+			 err_out))
+		return false;
+
+	std::error_code cleanup_ec;
+	fs::remove_all(temp_root, cleanup_ec);
+	return true;
+}
+
+bool test_existing_config_is_untouched(std::string *err_out) {
+	namespace fs = std::filesystem;
+
+	const fs::path temp_root = make_temp_root("existing");
+	ScopedEnvVar xdg_config_home("XDG_CONFIG_HOME", temp_root.string());
+	ScopedEnvVar home("HOME", "");
+
+	const fs::path config_path = get_config_file_path();
+	const fs::path config_dir = config_path.parent_path();
+	std::error_code ec;
+	fs::create_directories(config_dir, ec);
+	if (!expect_true(!ec, "Failed to create test config directory.",
+			 err_out))
+		return false;
+
+	const std::string original =
+	    "[output]\n"
+	    "package_dir=custom-package-dir\n"
+	    "[signing]\n"
+	    "algorithm=ed25519\n";
+	{
+		std::ofstream out(config_path, std::ios::binary | std::ios::trunc);
+		if (!expect_true(static_cast<bool>(out),
+				 "Failed to create existing config fixture.",
+				 err_out))
+			return false;
+		out << original;
+	}
+
+	AppConfig cfg;
+	if (!expect_true(load_app_config(cfg),
+			 "load_app_config should succeed with existing config.",
+			 err_out))
+		return false;
+
+	std::ifstream in(config_path, std::ios::binary);
+	std::string after((std::istreambuf_iterator<char>(in)),
+			  std::istreambuf_iterator<char>());
+	if (!expect_string_eq(after, original,
+			      "Existing config content", err_out))
+		return false;
+	if (!expect_string_eq(cfg.package_output_dir, "custom-package-dir",
+			      "Loaded package_dir", err_out))
+		return false;
+
+	fs::remove_all(temp_root, ec);
+	return true;
+}
+
+bool test_missing_config_directory_is_created(std::string *err_out) {
+	namespace fs = std::filesystem;
+
+	const fs::path temp_root = make_temp_root("mkdir");
+	const fs::path config_home = temp_root / "a" / "b" / "c";
+	ScopedEnvVar xdg_config_home("XDG_CONFIG_HOME",
+				     config_home.string());
+	ScopedEnvVar home("HOME", "");
+
+	AppConfig cfg;
+	const fs::path config_path = get_config_file_path();
+	const fs::path config_dir = config_path.parent_path();
+	if (!expect_true(!fs::exists(config_dir),
+			 "Config directory unexpectedly exists before test.",
+			 err_out))
+		return false;
+
+	if (!expect_true(load_app_config(cfg),
+			 "load_app_config should create missing config directory.",
+			 err_out))
+		return false;
+	if (!expect_true(fs::exists(config_dir),
+			 "Missing config directory was not created.",
+			 err_out))
+		return false;
+
+	std::error_code cleanup_ec;
+	fs::remove_all(temp_root, cleanup_ec);
+	return true;
+}
+
+bool test_created_config_permissions_are_restrictive(std::string *err_out) {
+	namespace fs = std::filesystem;
+
+	const fs::path temp_root = make_temp_root("perms");
+	ScopedEnvVar xdg_config_home("XDG_CONFIG_HOME", temp_root.string());
+	ScopedEnvVar home("HOME", "");
+
+	AppConfig cfg;
+	const fs::path config_path = get_config_file_path();
+	if (!expect_true(load_app_config(cfg),
+			 "load_app_config should create config before permissions check.",
+			 err_out))
+		return false;
+
+#if !defined(_WIN32)
+	std::error_code ec;
+	const auto perms = fs::status(config_path, ec).permissions();
+	if (!expect_true(!ec, "Failed to stat created config file.", err_out))
+		return false;
+	if (!expect_true((perms & fs::perms::others_read) ==
+				 fs::perms::none,
+			 "Config file should not be world-readable.", err_out))
+		return false;
+#endif
+
+	std::error_code cleanup_ec;
+	fs::remove_all(temp_root, cleanup_ec);
+	return true;
+}
 } // namespace
 
 int main() {
@@ -237,6 +436,14 @@ int main() {
 	     test_manifest_parse_serialize_round_trip},
 	    {"Manifest upsert/lookup", test_manifest_upsert_and_lookup_logic},
 	    {"SHA-256 known vector", test_sha256_known_vector},
+	    {"Missing config creates file and continues",
+	     test_missing_config_creates_file_and_continues},
+	    {"Existing config remains untouched",
+	     test_existing_config_is_untouched},
+	    {"Missing config directory is created",
+	     test_missing_config_directory_is_created},
+	    {"Created config permissions are restrictive",
+	     test_created_config_permissions_are_restrictive},
 	};
 
 	int failed = 0;

@@ -57,6 +57,11 @@ Run the application:
 ./build/ota-workbench
 ```
 
+On first run, if the default config file is missing, `ota-workbench` creates it automatically and continues:
+
+- Linux/macOS: `$XDG_CONFIG_HOME/ota-workbench/ota-workbench.conf` (or `~/.config/ota-workbench/ota-workbench.conf` when `XDG_CONFIG_HOME` is unset)
+- Windows: `%APPDATA%\\ota-workbench\\ota-workbench.conf` (or `%USERPROFILE%\\ota-workbench\\ota-workbench.conf` fallback)
+
 ## Test
 
 ```bash
